@@ -15,7 +15,7 @@
 #   ∫φ   = ∫φexact
 
 from nutils import mesh, cli, function, solver, topology, elementseq, transformseq, export, testing
-import treelog, numpy
+import treelog, numpy, numpy.linalg
 from matplotlib import collections, colors
 
 def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
@@ -54,11 +54,11 @@ def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
     # Construct function space for the potential field
     ns.basis = domain.basis('spline', degree=degree)
 
-    ns.φ = 'basis_n ?lhs_n'
-    ns.u = 'sqrt((basis_n,i ?lhs_n) (basis_m,i ?lhs_m))'
+    ns.φ   = 'basis_n ?lhs_n'
+    ns.u_i = 'φ_,i'
 
     # Set the exact solution (with zero average)
-    ns.φexact = 'uinf x_1 ( 1 - R^2 / (x_0^2 + x_1^2) )'
+    ns.φexact = 'uinf x_0 ( 1 + R^2 / (x_0^2 + x_1^2) )'
     ns.φerror = 'φ - φexact'
 
     # Construct the residual vector
@@ -67,7 +67,7 @@ def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
 
     # Lagrange-multiplier constraint (∫φ=∫φexact)
     res_φ += domain.integral('?λ basis_n d:x' @ ns, degree=degree*2)
-    res_λ    = domain.integral('(φ - φexact) d:x' @ ns, degree=degree*2)
+    res_λ  = domain.integral('(φ - φexact) d:x' @ ns, degree=degree*2)
 
     # Solve the constrained system
     sol = solver.solve_linear(['lhs','λ'], [res_φ, res_λ])
@@ -95,7 +95,10 @@ def makeplots(ambient_domain, domain, maxrefine, ns, nelems):
 
     # Velocity field evaluation
     bezier = subcell_topology.sample('bezier', 3)
-    points, φvals, uvals = bezier.eval(['x_i', 'φ', 'u']@ns)
+    points, φvals, uvals = bezier.eval(['x_i', 'φ', 'u_i / uinf']@ns)
+
+    center = subcell_topology.sample('uniform', 1)
+    cpoints, cvals = center.eval(['x_i', 'u_i / uinf']@ns)
 
     # Background domain evaluation
     background_domain = topology.SubsetTopology(ambient_domain, [ref  if domain.transforms.contains_with_tail(tr) else  ref.empty for tr, ref in zip(ambient_domain.transforms,ambient_domain.references)])
@@ -118,16 +121,17 @@ def makeplots(ambient_domain, domain, maxrefine, ns, nelems):
         im = ax.tripcolor(points[:,0], points[:,1], bezier.tri, φvals, shading='gouraud', cmap=cmap)
         ax.add_collection(collections.LineCollection(points[bezier.hull], colors='k', linewidth=0.5, alpha=0.5))
         ax.add_collection(collections.LineCollection(bpoints[bbezier.hull], colors='k', linewidth=1, alpha=1))
-        fig.colorbar(im)
+        fig.colorbar(im, label='φ')
         ax.axis('off')
 
     with export.mplfigure('velocity.png') as fig:
         ax = fig.add_subplot(111, aspect='equal', title='velocity')
         ax.autoscale(enable=True, axis='both', tight=True)
-        im = ax.tripcolor(points[:,0], points[:,1], bezier.tri, uvals, shading='gouraud', cmap=cmap)
+        im = ax.tripcolor(points[:,0], points[:,1], bezier.tri, numpy.linalg.norm(uvals, axis=1), shading='gouraud', cmap=cmap)
+        ax.quiver(cpoints[:,0], cpoints[:,1], cvals[:,0], cvals[:,1], scale=10*nelems/numpy.linalg.norm(cvals, axis=1), scale_units='width')
         ax.add_collection(collections.LineCollection(points[bezier.hull], colors='k', linewidth=0.5, alpha=0.5))
         ax.add_collection(collections.LineCollection(bpoints[bbezier.hull], colors='k', linewidth=1, alpha=1))
-        fig.colorbar(im)
+        fig.colorbar(im, label='V/Vinf')
         ax.axis('off')
 
 # Get integration sub-cell topology
@@ -152,10 +156,11 @@ class test(testing.TestCase):
 
     def test_p1(self) :
         lhs, err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=1)
-        with self.subTest('lhs'): self.assertAlmostEqual64(lhs,'''eNqrOH7lBAODjnmHxYLjE08yMOSbJVgsOR52hoFhlXEMklgFXB0DAwA7UhP3''')
+        with self.subTest('lhs'): self.assertAlmostEqual64(lhs,'''eNozPC54nA+IDY93nxA6UX1c6ET3CQY4KDV/Z95q8c681Py8xXuLT0B83oKBAQAcUhP3''')
         with self.subTest('err'): self.assertAlmostEqual(err[1], 0.9546445145978546, places=6)
 
     def test_p2(self):
         lhs, err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=2)
-        with self.subTest('lhs'): self.assertAlmostEqual64(lhs,'''eNqbcNzixLZTXqYnzAsslhxPOhFyao3pPPMYi6vHT56oM2s6aW6ujcJGVjMBSS8DAwCNgyPv''')
+        with self.subTest('lhs'): self.assertAlmostEqual64(lhs,'''eNqTPc53/O2xt8f4jssen3287rgbENYBWR0nj5/cdHzT8eMnO05WmFma+Vn4WViaVZilWjRZ7ALCJotU
+i8cWnyyELYUtPwFZDAwA7t0j7w==''')
         with self.subTest('err'): self.assertAlmostEqual(err[1], 0.42218496186521309, places=6)
