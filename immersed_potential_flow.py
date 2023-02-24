@@ -15,8 +15,10 @@
 #   ∫φ   = ∫φexact
 
 from nutils import mesh, cli, function, solver, topology, elementseq, transformseq, export, testing
-import treelog, numpy, numpy.linalg
+from nutils.expression_v2 import Namespace
 from matplotlib import collections, colors
+import treelog as log
+import numpy
 
 def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
 
@@ -46,41 +48,42 @@ def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
     domain = ambient_domain.trim(function.norm2(geom)-R, maxrefine=maxrefine)
 
     # Initialize the namespace
-    ns = function.Namespace()
-    ns.R    = R
-    ns.x    = geom
+    ns = Namespace()
+    ns.R = R
+    ns.x = geom
     ns.uinf = uinf
+    ns.define_for('x', gradient='∇', normal='n', jacobians=('dV', 'dS'))
 
     # Construct function space for the potential field
     ns.basis = domain.basis('spline', degree=degree)
-
-    ns.φ   = 'basis_n ?lhs_n'
-    ns.u_i = 'φ_,i'
+    ns.φ = function.dotarg('φ', ns.basis)
+    ns.u_i = '∇_i(φ)'
+    ns.λ = function.dotarg('λ')
 
     # Set the exact solution (with zero average)
-    ns.φexact = 'uinf x_0 ( 1 + R^2 / (x_0^2 + x_1^2) )'
+    ns.φexact = 'uinf x_0 (1 + R^2 / (x_0^2 + x_1^2))'
     ns.φerror = 'φ - φexact'
 
     # Construct the residual vector
-    res_φ  = domain.integral('basis_n,i φ_,i d:x' @ ns, degree=degree*2)
-    res_φ -= domain.boundary.integral('basis_n φexact_,i n_i d:x' @ ns, degree=degree*2)
+    res_φ  = domain.integral('∇_i(basis_n) ∇_i(φ) dV' @ ns, degree=degree*2)
+    res_φ -= domain.boundary.integral('basis_n ∇_i(φexact) n_i dS' @ ns, degree=degree*2)
 
     # Lagrange-multiplier constraint (∫φ=∫φexact)
-    res_φ += domain.integral('?λ basis_n d:x' @ ns, degree=degree*2)
-    res_λ  = domain.integral('(φ - φexact) d:x' @ ns, degree=degree*2)
+    res_φ += domain.integral('λ basis_n dV' @ ns, degree=degree*2)
+    res_λ  = domain.integral('(φ - φexact) dV' @ ns, degree=degree*2)
 
     # Solve the constrained system
-    sol = solver.solve_linear(['lhs','λ'], [res_φ, res_λ])
-    ns  = ns(**sol)
+    sol = solver.solve_linear(['φ','λ'], [res_φ, res_λ])
+    ns  = ns.copy_(**sol)
 
     # Evaluate the error
-    L2err, H1err, E, Eexact = numpy.sqrt(domain.integrate(['φerror φerror d:x',
-                                                           '(φerror φerror + φerror_,i φerror_,i) d:x',
-                                                           '0.5 φ_,i φ_,i d:x',
-                                                           '0.5 φexact_,i φexact_,i d:x']@ns, degree=degree*4))
+    L2err, H1err, E, Eexact = numpy.sqrt(domain.integrate([
+        'φerror φerror dV',
+        '(φerror φerror + ∇_i(φerror) ∇_i(φerror)) dV',
+        '.5 ∇_i(φ) ∇_i(φ) dV',
+        '.5 ∇_i(φexact) ∇_i(φexact) dV'] @ ns, degree=degree*4))
 
-    Eerr = abs(E-Eexact)
-    treelog.user(f'errors: L2={L2err:.2e}, H1={H1err:.2e}, energy={Eerr:.2e}')
+    log.user(f'errors: L2={L2err:.2e}, H1={H1err:.2e}, energy={abs(E-Eexact):.2e}')
 
     # Post-processing
     makeplots(domain, maxrefine, ns, L)
@@ -135,8 +138,8 @@ class test(testing.TestCase):
         args, H1err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=1)
         with self.subTest('lambda'):
             self.assertAlmostEqual(args['λ'], 0)
-        with self.subTest('lhs'):
-            self.assertAlmostEqual64(args['lhs'], '''
+        with self.subTest('potential'):
+            self.assertAlmostEqual64(args['φ'], '''
                 eNozPC54nA+IDY93nxA6UX1c6ET3CQY4KDV/Z95q8c681Py8xXuLT0B83gIA9FUT9w==''')
         with self.subTest('err'):
             self.assertAlmostEqual(H1err, 0.9546445145978546, places=6)
@@ -145,8 +148,8 @@ class test(testing.TestCase):
         args, H1err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=2)
         with self.subTest('lambda'):
             self.assertAlmostEqual(args['λ'], 0)
-        with self.subTest('lhs'):
-            self.assertAlmostEqual64(args['lhs'],'''
+        with self.subTest('potential'):
+            self.assertAlmostEqual64(args['φ'],'''
                 eNqTPc53/O2xt8f4jssen3287rgbENYBWR0nj5/cdHzT8eMnO05WmFma+Vn4WViaVZilWjRZ7ALCJotU
                 i8cWnyyELYUtPwFZAKb/I+8=''')
         with self.subTest('H1err'):
