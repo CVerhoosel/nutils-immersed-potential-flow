@@ -90,11 +90,8 @@ def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
 # Post-processing function
 def makeplots(domain, maxrefine, ns, L):
 
-    # Extract the sub-cell topology (implemented below)
-    subcell_topology = get_subcell_topo(domain)
-
     # Velocity field evaluation
-    bezier = subcell_topology.sample('bezier', 3)
+    bezier = domain.sample('bezier', 2**maxrefine+1)
     points, φvals, uvals = bezier.eval(['x_i', 'φ', 'u_i / uinf']@ns)
 
     np = 20 # number of quiver points per direction
@@ -128,20 +125,6 @@ def makeplots(domain, maxrefine, ns, L):
         ax.add_collection(collections.LineCollection(points[bezier.hull], colors='k', linewidth=0.5, alpha=0.5))
         fig.colorbar(im, label='V/Vinf')
 
-# Get integration sub-cell topology
-def get_subcell_topo(domain):
-  references = []
-  transforms = []
-  opposites  = []
-  for eref, etr, eopp in zip(domain.references, domain.transforms, domain.opposites):
-    for tr, ref in eref.simplices:
-      references.append(ref)
-      transforms.append(etr+(tr,))
-      opposites.append(eopp+(tr,))
-  references = elementseq.References.from_iter(references, domain.ndims)
-  opposites  = transformseq.PlainTransforms(opposites, todims=domain.ndims, fromdims=domain.ndims)
-  transforms = transformseq.PlainTransforms(transforms, todims=domain.ndims, fromdims=domain.ndims)
-  return topology.TransformChainsTopology('X', references, transforms, opposites)
 
 if __name__=='__main__':
     cli.run(main)
