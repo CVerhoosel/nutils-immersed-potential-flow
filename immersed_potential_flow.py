@@ -85,7 +85,7 @@ def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
     # Post-processing
     makeplots(ambient_domain, domain, maxrefine, ns, nelems)
 
-    return numpy.concatenate([sol['lhs'],[sol['λ']]]), numpy.array([L2err,H1err,Eerr])
+    return sol, H1err
 
 # Post-processing function
 def makeplots(ambient_domain, domain, maxrefine, ns, nelems):
@@ -155,12 +155,22 @@ if __name__=='__main__':
 class test(testing.TestCase):
 
     def test_p1(self) :
-        lhs, err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=1)
-        with self.subTest('lhs'): self.assertAlmostEqual64(lhs,'''eNozPC54nA+IDY93nxA6UX1c6ET3CQY4KDV/Z95q8c681Py8xXuLT0B83oKBAQAcUhP3''')
-        with self.subTest('err'): self.assertAlmostEqual(err[1], 0.9546445145978546, places=6)
+        args, H1err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=1)
+        with self.subTest('lambda'):
+            self.assertAlmostEqual(args['λ'], 0)
+        with self.subTest('lhs'):
+            self.assertAlmostEqual64(args['lhs'], '''
+                eNozPC54nA+IDY93nxA6UX1c6ET3CQY4KDV/Z95q8c681Py8xXuLT0B83gIA9FUT9w==''')
+        with self.subTest('err'):
+            self.assertAlmostEqual(H1err, 0.9546445145978546, places=6)
 
     def test_p2(self):
-        lhs, err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=2)
-        with self.subTest('lhs'): self.assertAlmostEqual64(lhs,'''eNqTPc53/O2xt8f4jssen3287rgbENYBWR0nj5/cdHzT8eMnO05WmFma+Vn4WViaVZilWjRZ7ALCJotU
-i8cWnyyELYUtPwFZDAwA7t0j7w==''')
-        with self.subTest('err'): self.assertAlmostEqual(err[1], 0.42218496186521309, places=6)
+        args, H1err = main(uinf=2.0, L=2.0, R=0.5, nelems=4, maxrefine=3, degree=2)
+        with self.subTest('lambda'):
+            self.assertAlmostEqual(args['λ'], 0)
+        with self.subTest('lhs'):
+            self.assertAlmostEqual64(args['lhs'],'''
+                eNqTPc53/O2xt8f4jssen3287rgbENYBWR0nj5/cdHzT8eMnO05WmFma+Vn4WViaVZilWjRZ7ALCJotU
+                i8cWnyyELYUtPwFZAKb/I+8=''')
+        with self.subTest('H1err'):
+            self.assertAlmostEqual(H1err, 0.42218496186521309, places=6)
