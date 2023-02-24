@@ -83,12 +83,12 @@ def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
     treelog.user(f'errors: L2={L2err:.2e}, H1={H1err:.2e}, energy={Eerr:.2e}')
 
     # Post-processing
-    makeplots(domain, maxrefine, ns, nelems)
+    makeplots(domain, maxrefine, ns, L)
 
     return sol, H1err
 
 # Post-processing function
-def makeplots(domain, maxrefine, ns, nelems):
+def makeplots(domain, maxrefine, ns, L):
 
     # Extract the sub-cell topology (implemented below)
     subcell_topology = get_subcell_topo(domain)
@@ -97,8 +97,11 @@ def makeplots(domain, maxrefine, ns, nelems):
     bezier = subcell_topology.sample('bezier', 3)
     points, φvals, uvals = bezier.eval(['x_i', 'φ', 'u_i / uinf']@ns)
 
-    center = subcell_topology.sample('uniform', 1)
-    cpoints, cvals = center.eval(['x_i', 'u_i / uinf']@ns)
+    np = 20 # number of quiver points per direction
+    uniform = (numpy.arange(.5, np) / np - .5) * L
+    gridpoints = numpy.reshape(numpy.meshgrid(uniform, uniform), (2, -1)).T
+    center = domain.locate(ns.x, gridpoints, tol=1e-10, skip_missing=True)
+    cpoints, cvals = center.eval(['x_i', 'u_i'] @ ns)
 
     # Defining Paul Tol's `rainbow_PuBr` color map [https://personal.sron.nl/~pault/]
     clrs = ['#6F4C9B', '#6059A9', '#5568B8', '#4E79C5', '#4D8AC6',
@@ -121,7 +124,7 @@ def makeplots(domain, maxrefine, ns, nelems):
         ax = fig.add_subplot(111, aspect='equal', title='velocity')
         ax.autoscale(enable=True, axis='both', tight=True)
         im = ax.tripcolor(points[:,0], points[:,1], bezier.tri, numpy.linalg.norm(uvals, axis=1), shading='gouraud', cmap=cmap)
-        ax.quiver(cpoints[:,0], cpoints[:,1], cvals[:,0], cvals[:,1], scale=10*nelems/numpy.linalg.norm(cvals, axis=1), scale_units='width')
+        ax.quiver(cpoints[:,0], cpoints[:,1], cvals[:,0], cvals[:,1])
         ax.add_collection(collections.LineCollection(points[bezier.hull], colors='k', linewidth=0.5, alpha=0.5))
         fig.colorbar(im, label='V/Vinf')
 
