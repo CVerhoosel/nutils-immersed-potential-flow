@@ -83,12 +83,12 @@ def main(uinf:float, L:float, R:float, nelems:int, degree:int, maxrefine:int):
     treelog.user(f'errors: L2={L2err:.2e}, H1={H1err:.2e}, energy={Eerr:.2e}')
 
     # Post-processing
-    makeplots(ambient_domain, domain, maxrefine, ns, nelems)
+    makeplots(domain, maxrefine, ns, nelems)
 
     return sol, H1err
 
 # Post-processing function
-def makeplots(ambient_domain, domain, maxrefine, ns, nelems):
+def makeplots(domain, maxrefine, ns, nelems):
 
     # Extract the sub-cell topology (implemented below)
     subcell_topology = get_subcell_topo(domain)
@@ -99,11 +99,6 @@ def makeplots(ambient_domain, domain, maxrefine, ns, nelems):
 
     center = subcell_topology.sample('uniform', 1)
     cpoints, cvals = center.eval(['x_i', 'u_i / uinf']@ns)
-
-    # Background domain evaluation
-    background_domain = topology.SubsetTopology(ambient_domain, [ref  if domain.transforms.contains_with_tail(tr) else  ref.empty for tr, ref in zip(ambient_domain.transforms,ambient_domain.references)])
-    bbezier = background_domain.sample('bezier', 2**maxrefine+1)
-    bpoints = bbezier.eval(ns.x)
 
     # Defining Paul Tol's `rainbow_PuBr` color map [https://personal.sron.nl/~pault/]
     clrs = ['#6F4C9B', '#6059A9', '#5568B8', '#4E79C5', '#4D8AC6',
@@ -120,9 +115,7 @@ def makeplots(ambient_domain, domain, maxrefine, ns, nelems):
         ax.autoscale(enable=True, axis='both', tight=True)
         im = ax.tripcolor(points[:,0], points[:,1], bezier.tri, φvals, shading='gouraud', cmap=cmap)
         ax.add_collection(collections.LineCollection(points[bezier.hull], colors='k', linewidth=0.5, alpha=0.5))
-        ax.add_collection(collections.LineCollection(bpoints[bbezier.hull], colors='k', linewidth=1, alpha=1))
         fig.colorbar(im, label='φ')
-        ax.axis('off')
 
     with export.mplfigure('velocity.png') as fig:
         ax = fig.add_subplot(111, aspect='equal', title='velocity')
@@ -130,9 +123,7 @@ def makeplots(ambient_domain, domain, maxrefine, ns, nelems):
         im = ax.tripcolor(points[:,0], points[:,1], bezier.tri, numpy.linalg.norm(uvals, axis=1), shading='gouraud', cmap=cmap)
         ax.quiver(cpoints[:,0], cpoints[:,1], cvals[:,0], cvals[:,1], scale=10*nelems/numpy.linalg.norm(cvals, axis=1), scale_units='width')
         ax.add_collection(collections.LineCollection(points[bezier.hull], colors='k', linewidth=0.5, alpha=0.5))
-        ax.add_collection(collections.LineCollection(bpoints[bbezier.hull], colors='k', linewidth=1, alpha=1))
         fig.colorbar(im, label='V/Vinf')
-        ax.axis('off')
 
 # Get integration sub-cell topology
 def get_subcell_topo(domain):
